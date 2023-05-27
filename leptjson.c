@@ -126,7 +126,7 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
     if (*p == '-') p++;
     /* ignore the number '0' if it is the first character */
     if (*p == '0') p++;
-    /* validate the number '1'~'9' */
+        /* validate the number '1'~'9' */
     else {
         if (!ISDIGIT1TO9(*p)) return LEPT_PARSE_INVALID_VALUE;
         /* The loop determines whether it is a number or not */
