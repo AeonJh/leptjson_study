@@ -18,14 +18,16 @@ enum {
     /* JSON string is empty or contains only whitespace characters. */
     LEPT_PARSE_EXPECT_VALUE,
     LEPT_PARSE_INVALID_VALUE,
-    LEPT_PARSE_ROOT_NOT_SINGULAR
+    LEPT_PARSE_ROOT_NOT_SINGULAR,
+    LEPT_PARSE_NUMBER_TOO_BIG
 };
 
 /* 3.json value struct */
 typedef struct lept_value lept_value;
 
 struct lept_value {
-    lept_type type;
+    double n; /* number */
+    lept_type type; /* value type */
 };
 
 /* init */
@@ -44,5 +46,10 @@ int lept_get_type(const lept_value* v);
     /* get or set boolean's value */
 int lept_get_boolean(const lept_value* v);
 void lept_set_boolean(lept_value* v, int boolean);
+
+    /* get or set number's value */
+double lept_get_number(const lept_value* v);
+void lept_set_number(lept_value* v, double number);
+
 
 #endif //LEPTJSON_STUDY_LEPTJSON_H
