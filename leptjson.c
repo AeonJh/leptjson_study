@@ -98,7 +98,8 @@ int lept_get_type(const lept_value* v) {
 
 int lept_get_boolean(const lept_value* v) {
     assert(v != NULL && (v->type == LEPT_TRUE || v->type == LEPT_FALSE));
-    return v->type;
+    /* return 1 if the value is true, otherwise return 0 */
+    return v->type == LEPT_TRUE ? 1 : 0;
 }
 
 void lept_set_boolean(lept_value* v, int boolean) {
