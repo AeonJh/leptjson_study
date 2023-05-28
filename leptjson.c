@@ -36,6 +36,11 @@ JSON-text: ws value ws
         escape = %x5C              ; \
         quotation-mark = %x22      ; "
         unescaped = %x20-21 / %x23-5B / %x5D-10FFFF
+    value = array
+        array = %x5B ws [ value *( ws %x2C ws value ) ] ws %x5D
+        %x5B = [
+        %x2C = ,
+        %x5D = ]
 ****************************************************************/
 
 /* The initial allocated stack size */
@@ -44,7 +49,7 @@ JSON-text: ws value ws
 #endif
 
 /* Determines that characters are equal, if so, move the pointer back one bit */
-#define EXCEPT(c,ch) do { assert(*c->json == (ch)); c->json++; } while(0)
+#define EXPECT(c,ch) do { assert(*c->json == (ch)); c->json++; } while(0)
 /* Determine if it‘s a number */
 #define ISDIGIT(ch) ((ch) >= '0' && (ch) <= '9')
 /* Determine if it‘s a number except 0 */
@@ -123,7 +128,7 @@ static void lept_parse_whitespace(lept_context* c) {
 static int lept_parse_literal(lept_context* c, lept_value* v, const char* literal, lept_type type) {
     size_t i;
     /* check the first character */
-    EXCEPT(c, literal[0]);
+    EXPECT(c, literal[0]);
     /* check the rest characters */
     for(i = 0; literal[i+1]; i++) {
         if (c->json[i] != literal[i+1]) {
@@ -237,7 +242,7 @@ static int lept_parse_string_raw(lept_context* c, char** str, size_t* len) {
     unsigned u, u2;
     const char* p;
     /* validate the first character */
-    EXCEPT(c, '\"');
+    EXPECT(c, '\"');
     p = c->json;
     /* loop to find the end of the string */
     for(;;) {
@@ -317,6 +322,57 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
     return ret;
 }
 
+/* forward declaration */
+static int lept_parse_value(lept_context* c, lept_value* v);
+
+/* parse array */
+static int lept_parse_array(lept_context* c, lept_value* v) {
+    int ret;
+    size_t size = 0, i;
+    EXPECT(c, '[');
+    lept_parse_whitespace(c);
+    /* empty array */
+    if (*c->json == ']') {
+        c->json++;
+        lept_set_array(v, 0);
+        return LEPT_PARSE_OK;
+    }
+    /* parse elements */
+    for (;;) {
+        lept_value e;
+        lept_init(&e);
+        /* parse element */
+        if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK)
+            break;
+        /* store the element to stack */
+        memcpy(lept_context_get(c, sizeof(lept_value)), &e, sizeof(lept_value));
+        size++;
+        lept_parse_whitespace(c);
+        /* check the next character */
+        if (*c->json == ',') {
+            c->json++;
+            lept_parse_whitespace(c);
+        }
+        /* end of array */
+        else if (*c->json == ']') {
+            c->json++;
+            lept_set_array(v, size);
+            /* copy the elements from the stack */
+            memcpy(v->a.e, lept_context_pop(c, size * sizeof(lept_value)), size * sizeof(lept_value));
+            v->a.size = size;
+            return LEPT_PARSE_OK;
+        }
+        else {
+            ret = LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+            break;
+        }
+    }
+    /* pop and free the elements on the stack */
+    for (i = 0; i < size; i++)
+        lept_free((lept_value*)lept_context_pop(c, sizeof(lept_value)));
+    return ret;
+}
+
 /* parse single literal */
 static int lept_parse_value(lept_context* c, lept_value* v) {
     switch (*c->json) {
@@ -324,6 +380,7 @@ static int lept_parse_value(lept_context* c, lept_value* v) {
         case 'f':  return lept_parse_literal(c, v, "false", LEPT_FALSE);
         case 't':  return lept_parse_literal(c, v, "true", LEPT_TRUE);
         case '"':  return lept_parse_string(c, v);
+        case '[':  return lept_parse_array(c, v);
         case '\0': return LEPT_PARSE_EXPECT_VALUE;
         default:   return lept_parse_number(c, v);
     }
@@ -339,7 +396,8 @@ int lept_parse(lept_value* v, const char* json) {
     c.json = json;
     c.stack = NULL;
     c.size = c.top = 0;
-    v->type = LEPT_NULL;
+    /* initialize lept_value */
+    lept_init(v);
     /* parse whitespace */
     lept_parse_whitespace(&c);
     /* parse the first character */
@@ -352,15 +410,26 @@ int lept_parse(lept_value* v, const char* json) {
             ret = LEPT_PARSE_ROOT_NOT_SINGULAR;
         }
     }
+    /* free the memory of lept_context */
+    assert(c.top == 0);
+    free(c.stack);
     return ret;
 }
 
 void lept_free(lept_value* v) {
     assert(v != NULL);
+    size_t i;
     /* free the memory */
     switch (v->type) {
         case LEPT_STRING:
             free(v->s.s);
+            break;
+        case LEPT_ARRAY:
+            /* free the memory of each element */
+            for (i = 0; i < v->a.size; i++)
+                lept_free(&v->a.e[i]);
+            /* free the memory of the array */
+            free(v->a.e);
             break;
         default: break;
     }
@@ -421,4 +490,57 @@ void lept_set_string(lept_value* v, const char* s, size_t len) {
     /* set the length of the string */
     v->s.len = len;
     v->type = LEPT_STRING;
+}
+
+void lept_set_array(lept_value* v, size_t capacity) {
+    assert(v != NULL);
+    lept_free(v);
+    v->type = LEPT_ARRAY;
+    v->a.size = 0;
+    v->a.capacity = capacity;
+    v->a.e = capacity > 0 ? (lept_value*)malloc(capacity * sizeof(lept_value)) : NULL;
+}
+
+size_t lept_get_array_size(const lept_value* v) {
+    assert(v != NULL && v->type == LEPT_ARRAY);
+    return v->a.size;
+}
+
+size_t lept_get_array_capacity(const lept_value* v) {
+    assert(v != NULL && v->type == LEPT_ARRAY);
+    return v->a.capacity;
+}
+
+void lept_reserve_array(lept_value* v, size_t capacity) {
+    /* todo */
+}
+
+void lept_shrink_array(lept_value* v) {
+    /* todo */
+}
+
+void lept_clear_array(lept_value* v) {
+    /* todo */
+}
+
+lept_value* lept_get_array_element(lept_value* v, size_t index) {
+    assert(v != NULL && v->type == LEPT_ARRAY);
+    assert(index < v->a.size);
+    return &v->a.e[index];
+}
+
+lept_value* lept_pushback_array_element(lept_value* v) {
+    /* todo */
+}
+
+void lept_popback_array_element(lept_value* v) {
+    /* todo */
+}
+
+lept_value* lept_insert_array_element(lept_value* v, size_t index) {
+    /* todo */
+}
+
+void lept_erase_array_element(lept_value* v, size_t index, size_t count) {
+    /* todo */
 }
