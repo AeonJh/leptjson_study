@@ -23,7 +23,9 @@ enum {
     /* string error*/
     LEPT_PARSE_MISS_QUOTATION_MARK,
     LEPT_PARSE_INVALID_STRING_ESCAPE, /* invalid escape character */
-    LEPT_PARSE_INVALID_STRING_CHAR
+    LEPT_PARSE_INVALID_STRING_CHAR,
+    LEPT_PARSE_INVALID_UNICODE_HEX, /* invalid unicode hexadecimal number */
+    LEPT_PARSE_INVALID_UNICODE_SURROGATE /* invalid unicode surrogate pair */
 };
 
 /* 3.json value struct */

@@ -8,7 +8,7 @@
 #include <stdio.h>   /* sprintf() */
 #include <string.h>  /* memcpy() */
 
-/**********************************************
+/**************************************************************
 JSON-text: ws value ws
     ws = *(%x20 / %x09 / %x0A / %x0D)
     value = null / false / true
@@ -20,7 +20,23 @@ JSON-text: ws value ws
         int = "0" / digit1-9 *digit
         frac = "." 1*digit
         exp = ("e" / "E") ["-" / "+"] 1*digit
-**********************************************/
+    value = string
+        string = quotation-mark *char quotation-mark
+        char = unescaped /
+            escape (
+                %x22 /          ; "    quotation mark  U+0022
+                %x5C /          ; \    reverse solidus U+005C
+                %x2F /          ; /    solidus         U+002F
+                %x62 /          ; b    backspace       U+0008
+                %x66 /          ; f    form feed       U+000C
+                %x6E /          ; n    line feed       U+000A
+                %x72 /          ; r    carriage return U+000D
+                %x74 /          ; t    tab             U+0009
+                %x75 4HEXDIG )  ; uXXXX                U+XXXX
+        escape = %x5C              ; \
+        quotation-mark = %x22      ; "
+        unescaped = %x20-21 / %x23-5B / %x5D-10FFFF
+****************************************************************/
 
 /* The initial allocated stack size */
 #ifndef LEPT_PARSE_STACK_INIT_SIZE
@@ -33,6 +49,8 @@ JSON-text: ws value ws
 #define ISDIGIT(ch) ((ch) >= '0' && (ch) <= '9')
 /* Determine if it‘s a number except 0 */
 #define ISDIGIT1TO9(ch) ((ch) >= '1' && (ch) <= '9')
+/* Determine if it‘s a hex number */
+#define ISHEX(ch) (ISDIGIT(ch) || ((ch) >= 'A' && (ch) <= 'F') || ((ch) >= 'a' && (ch) <= 'f'))
 /* push single character onto the stack */
 #define PUTC(c, ch) do { *(char*)lept_context_get(c, sizeof(char)) = (ch); } while(0)
 
@@ -159,12 +177,64 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
     return LEPT_PARSE_OK;
 }
 
+/* parse the 4 hexadecimal digits */
+static const char* lept_parse_hex4(const char* p, unsigned* u) {
+    size_t i;
+    *u = 0;
+    for (i = 0; i < 4; i++) {
+        char ch = *p++;
+        /* shift left 4 bits to make room for a hexadecimal digit */
+        *u <<= 4;
+        /* converts a hexadecimal digit to it's corresponding Unicode value */
+        if (ch >= '0' && ch <= '9') *u |= ch - '0';
+        else if (ch >= 'A' && ch <= 'F') *u |= ch - ('A' - 10);
+        else if (ch >= 'a' && ch <= 'f') *u |= ch - ('a' - 10);
+        else return NULL;
+    }
+    /* invalid hexadecimal digit */
+    return p;
+}
+
+/* encode UTF-8 */
+/************************************************************
+Unicode 十六进制码点范围	UTF-8 二进制
+0000 0000 - 0000 007F	0xxxxxxx
+0000 0080 - 0000 07FF	110xxxxx 10xxxxxx
+0000 0800 - 0000 FFFF	1110xxxx 10xxxxxx 10xxxxxx
+0001 0000 - 0010 FFFF	11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+************************************************************/
+static void lept_encode_utf8(lept_context* c, unsigned u) {
+    /* 1 byte */
+    if (u <= 0x7F) {
+        PUTC(c, u & 0xFF);
+    }
+    /* 2 bytes */
+    else if (u <= 0x7FF) {
+        PUTC(c, 0xC0 | ((u >> 6) & 0xFF));
+        PUTC(c, 0x80 | ( u       & 0x3F));
+    }
+    /* 3 bytes */
+    else if (u <= 0xFFFF) {
+        PUTC(c, 0xE0 | ((u >> 12) & 0xFF));
+        PUTC(c, 0x80 | ((u >>  6) & 0x3F));
+        PUTC(c, 0x80 | ( u        & 0x3F));
+    }
+    /* 4 bytes */
+    else {
+        assert(u <= 0x10FFFF);
+        PUTC(c, 0xF0 | ((u >> 18) & 0xFF));
+        PUTC(c, 0x80 | ((u >> 12) & 0x3F));
+        PUTC(c, 0x80 | ((u >>  6) & 0x3F));
+        PUTC(c, 0x80 | ( u        & 0x3F));
+    }
+}
+
 /* parse raw string */
 static int lept_parse_string_raw(lept_context* c, char** str, size_t* len) {
     /* set the head of the string */
     size_t head = c->top;
     /* temporary storage of surrogates */
-    /* unsigned u, u2; */
+    unsigned u, u2;
     const char* p;
     /* validate the first character */
     EXCEPT(c, '\"');
@@ -176,13 +246,15 @@ static int lept_parse_string_raw(lept_context* c, char** str, size_t* len) {
         char ch = *p++;
         switch (ch) {
             case '\"':
+                /* get the length of the string */
                 *len = c->top - head;
-                /* copy the string to the stack */
+                /* copy the string from the stack */
                 *str = lept_context_pop(c, *len);
                 /* update the json string */
                 c->json = p;
                 return LEPT_PARSE_OK;
             case '\\':
+                /* deal with escape characters */
                 switch (*p++) {
                     case '\"': PUTC(c, '\"'); break;
                     case '\\': PUTC(c, '\\'); break;
@@ -192,9 +264,30 @@ static int lept_parse_string_raw(lept_context* c, char** str, size_t* len) {
                     case 'n':  PUTC(c, '\n'); break;
                     case 'r':  PUTC(c, '\r'); break;
                     case 't':  PUTC(c, '\t'); break;
+                    /* deal with surrogates */
                     case 'u':
-                        /* validate the four hexadecimal digits */
-                        /* todo */
+                        /* validate the 4 hexadecimal digits */
+                        if (!(p = lept_parse_hex4(p, &u)))
+                            STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
+                        /* check the high surrogate */
+                        if (u >= 0xD800 && u <= 0xDBFF) {
+                            /* validate the low surrogate */
+                            if (p[0] == '\\' && p[1] == 'u') {
+                                /* skip '\u' */
+                                p += 2;
+                                if (!(p = lept_parse_hex4(p, &u2)))
+                                    STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
+                                if (u2 < 0xDC00 || u2 > 0xDFFF)
+                                    STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                                /* calculate the code point */
+                                /* codepoint = 0x10000 + (H − 0xD800) × 0x400 + (L − 0xDC00) */
+                                u = (((u - 0xD800) << 10) | (u2 - 0xDC00)) + 0x10000;
+                            }
+                            else
+                                STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                        }
+                        /* encode the code point as utf8 */
+                        lept_encode_utf8(c,u);
                         break;
                     default:
                         STRING_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE);
