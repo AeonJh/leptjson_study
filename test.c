@@ -701,13 +701,13 @@ static void test_access(void) {
     test_access_object();
 }
 
-int main(void) {
+static int test(void) {
     test_access();
     test_move();
     test_copy();
     test_swap();
     test_equal();
-    
+
     test_parse_null();
     test_parse_true();
     test_parse_false();
@@ -732,4 +732,31 @@ int main(void) {
     test_parse_miss_comma_or_curly_bracket();
     printf("%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
     return main_ret;
+}
+
+int main(void) {
+    FILE *fp = fopen("test.json", "rb");
+    if (!fp) {
+        fprintf(stderr, "cannot open test.json\n");
+        return 1;
+    }
+    fseek(fp, 0, SEEK_END);
+    size_t fileSize = ftell(fp);
+    size_t length = 0;
+    rewind(fp);
+    char *jsonData = (char *)malloc(fileSize + 1);
+    fread(jsonData, fileSize, 1, fp);
+    jsonData[fileSize] = '\0';
+    fclose(fp);
+
+    lept_value v;
+    lept_init(&v);
+    lept_parse(&v, jsonData);
+    char* result = lept_stringify(&v, &length);
+    printf("%ld\n", length);
+    printf("%s\n", result);
+    lept_free(&v);
+    free(result);
+    free(jsonData);
+    return 0;
 }

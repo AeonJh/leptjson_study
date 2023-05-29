@@ -103,8 +103,12 @@ static size_t lept_context_push(lept_context* c, size_t size) {
             c->size += c->size >> 1;
         }
         /* allocate memory */
-        c->stack = (char*)realloc(c->stack, c->size);
-        /* todo */
+        if (!(c->stack = (char*)realloc(c->stack, c->size))) {
+            /* reallocation failed, free previously allocated memory and exit */
+            free(c->stack);
+            fprintf(stderr, "Error: unable to allocate memory\n");
+            exit(EXIT_FAILURE);
+        }
     }
     /* update the top of the stack */
     c->top += size;
