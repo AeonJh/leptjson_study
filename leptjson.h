@@ -5,6 +5,8 @@
 
 #include <stddef.h> /* size_t */
 
+#define LEPT_KEY_NOT_EXIST ((size_t)-1)
+
 /* 1.json value type */
 typedef enum {
     LEPT_NULL, LEPT_FALSE, LEPT_TRUE, LEPT_NUMBER, LEPT_STRING, LEPT_ARRAY, LEPT_OBJECT
@@ -79,12 +81,21 @@ struct lept_member {
 /* 4.API */
 /* parse json string to json value */
 int lept_parse(lept_value* v, const char* json);
+/* generate json string from json value */
+char* lept_stringify(const lept_value* v, size_t* length);
+
+/* copy / move / swap */
+void lept_copy(lept_value* dst, const lept_value* src);
+void lept_move(lept_value* dst, lept_value* src);
+void lept_swap(lept_value* lhs, lept_value* rhs);
 
 /* free json value */
 void lept_free(lept_value* v);
 
 /* get type */
 int lept_get_type(const lept_value* v);
+/* equal */
+int lept_is_equal(const lept_value* lhs, const lept_value* rhs);
 
 /* boolean */
 int lept_get_boolean(const lept_value* v);          /* get boolean */
