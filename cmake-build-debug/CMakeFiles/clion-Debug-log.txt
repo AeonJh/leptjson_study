@@ -1,0 +1,4 @@
+C:\Windows\system32\wsl.exe --distribution Ubuntu --exec /bin/bash -c "export PATH=\"/usr/bin:$PATH\" && export CMAKE_COLOR_DIAGNOSTICS=ON && export CLION_IDE=TRUE && export JETBRAINS_IDE=TRUE && cd /mnt/c/Users/AeonJh/AeonJh_PC/Documents/CLionProjects/leptjson_study/cmake-build-debug && /usr/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja -DCMAKE_C_COMPILER=/usr/bin/clang '-DCMAKE_CXX_COMPILER=/usr/bin/clang++' -G Ninja -S /mnt/c/Users/AeonJh/AeonJh_PC/Documents/CLionProjects/leptjson_study -B /mnt/c/Users/AeonJh/AeonJh_PC/Documents/CLionProjects/leptjson_study/cmake-build-debug"
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /mnt/c/Users/AeonJh/AeonJh_PC/Documents/CLionProjects/leptjson_study/cmake-build-debug
