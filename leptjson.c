@@ -83,44 +83,28 @@ typedef struct {
     size_t size, top;
 } lept_context;
 
-/* push characters onto the stack */
-/* It is possible that lept_parse_value could cause memory reallocation on the stack,
-which could invalidate pointers to the stack, To avoid this, change the return pointer
-to return the index of the location pointed to on the stack. */
-static size_t lept_context_get(lept_context* c, size_t size) {
+/* return the memory address of the top of the stack */
+static void* lept_context_push(lept_context* c, size_t size) {
+    /* check the stack size */
     assert(size > 0);
-    /* if the stack doesn't fit or is full, double the size */
+    void* ret;
+    /* check the stack size */
     if (c->top + size >= c->size) {
+        /* double the stack size */
         if (c->size == 0) {
             c->size = LEPT_PARSE_STACK_INIT_SIZE;
         }
-        /* c->size * 1.5 */
-        /* why not c->size * 2 ?
-        When allocating a 1.5x increase, it is possible to reuse existing memory space,for more
-        information, please refer to: https://www.zhihu.com/question/25079705/answer/30030883 */
         while (c->top + size >= c->size) {
-            /* equivalent to c->size += c->size * 0.5, but shift operations are faster */
-            c->size += c->size >> 1;
+            c->size += c->size >> 1;  /* c->size * 1.5 */
         }
         /* allocate memory */
-        if (!(c->stack = (char*)realloc(c->stack, c->size))) {
-            /* reallocation failed, free previously allocated memory and exit */
-            free(c->stack);
-            fprintf(stderr, "Error: unable to allocate memory\n");
-            exit(EXIT_FAILURE);
-        }
+        c->stack = (char*)realloc(c->stack, c->size);
     }
+    /* returns the memory address of the top of the stack */
+    ret = c->stack + c->top;
     /* update the top of the stack */
     c->top += size;
-    /* return index into the stack */
-    return c->top - size;
-}
-
-/* return the memory address of the index */
-static void* lept_context_push(lept_context* c, size_t size) {
-    size_t index = lept_context_get(c, size);
-    assert(index + size <= c->top);
-    return c->stack + index;
+    return ret;
 }
 
 /* pop characters from the stack */
