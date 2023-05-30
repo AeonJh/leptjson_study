@@ -68,9 +68,9 @@ JSON-text: ws value ws
 /* Determine if it‘s a hex number */
 #define ISHEX(ch) (ISDIGIT(ch) || ((ch) >= 'A' && (ch) <= 'F') || ((ch) >= 'a' && (ch) <= 'f'))
 /* push single character onto the stack */
-#define PUTC(c, ch) do { *(char*)lept_context_get(c, sizeof(char)) = (ch); } while(0)
+#define PUTC(c, ch) do { *(char*)lept_context_push(c, sizeof(char)) = (ch); } while(0)
 /* push string onto the stack */
-#define PUTS(c, s, len) memcpy(lept_context_get(c, len), s, len)
+#define PUTS(c, s, len) memcpy(lept_context_push(c, len), s, len)
 
 /* string error */
 #define STRING_ERROR(ret) do { c->top = head; return ret; } while(0)
@@ -87,7 +87,7 @@ typedef struct {
 /* It is possible that lept_parse_value could cause memory reallocation on the stack,
 which could invalidate pointers to the stack, To avoid this, change the return pointer
 to return the index of the location pointed to on the stack. */
-static size_t lept_context_push(lept_context* c, size_t size) {
+static size_t lept_context_get(lept_context* c, size_t size) {
     assert(size > 0);
     /* if the stack doesn't fit or is full, double the size */
     if (c->top + size >= c->size) {
@@ -117,8 +117,8 @@ static size_t lept_context_push(lept_context* c, size_t size) {
 }
 
 /* return the memory address of the index */
-static void* lept_context_get(lept_context* c, size_t size) {
-    size_t index = lept_context_push(c, size);
+static void* lept_context_push(lept_context* c, size_t size) {
+    size_t index = lept_context_get(c, size);
     assert(index + size <= c->top);
     return c->stack + index;
 }
@@ -362,7 +362,7 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
         if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK)
             break;
         /* store the element to stack */
-        memcpy(lept_context_get(c, sizeof(lept_value)), &e, sizeof(lept_value));
+        memcpy(lept_context_push(c, sizeof(lept_value)), &e, sizeof(lept_value));
         size++;
         lept_parse_whitespace(c);
         /* check the next character */
@@ -432,7 +432,7 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
         if ((ret = lept_parse_value(c, &m.v)) != LEPT_PARSE_OK)
             break;
         /* store the member to stack */
-        memcpy(lept_context_get(c, sizeof(lept_member)), &m, sizeof(lept_member));
+        memcpy(lept_context_push(c, sizeof(lept_member)), &m, sizeof(lept_member));
         size++;
         m.k = NULL; /* ownership is transferred to member on stack */
         /* parse ws [comma | right-curly-brace] ws */
@@ -517,7 +517,7 @@ static void lept_stringify_string(lept_context* c, const char* s, size_t len) {
     char* head, *p;
     assert(s != NULL);
     /* reserve the enough space */
-    p = head = lept_context_get(c, size = len * 6 + 2); /* "\u00xx..." */
+    p = head = lept_context_push(c, size = len * 6 + 2); /* "\u00xx..." */
     *p++ = '"';
     for (i = 0; i < len; i++) {
         unsigned char ch = (unsigned char)s[i];
@@ -552,7 +552,7 @@ static void lept_stringify_value(lept_context* c, const lept_value* v) {
         case LEPT_TRUE:   PUTS(c, "true", 4); break;
         /* 32 is enough to hold a double in string format */
         /* sprintf() is not safe, but we have checked the length of the buffer */
-        case LEPT_NUMBER: c->top -= 32 - sprintf(lept_context_get(c, 32), "%.17g", v->n); break;
+        case LEPT_NUMBER: c->top -= 32 - sprintf(lept_context_push(c, 32), "%.17g", v->n); break;
         case LEPT_STRING: lept_stringify_string(c, v->s.s, v->s.len); break;
         case LEPT_ARRAY:
             PUTC(c, '[');
