@@ -735,6 +735,7 @@ static int test(void) {
 }
 
 int main(void) {
+    test();
     FILE *fp = fopen("test.json", "rb");
     if (!fp) {
         fprintf(stderr, "cannot open test.json\n");
