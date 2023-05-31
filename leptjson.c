@@ -618,7 +618,7 @@ char* lept_stringify(const lept_value* v, size_t* length) {
     /* initialize lept_context */
     c.stack = (char*)malloc(c.size = LEPT_PARSE_STRINGIFY_INIT_SIZE);
     c.top = 0;
-    /* stringify the value */
+    /* stringify the value, and the indent_level at least 1 */
     lept_stringify_value(&c, v, 1, 2);
     if (length)
         *length = c.top;
