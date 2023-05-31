@@ -735,10 +735,10 @@ static int test(void) {
 }
 
 int main(void) {
-    test();
-    FILE *fp = fopen("test.json", "rb");
+    //test();
+    FILE *fp = fopen("parse.json", "rb");
     if (!fp) {
-        fprintf(stderr, "cannot open test.json\n");
+        fprintf(stderr, "cannot open parse.json\n");
         return 1;
     }
     fseek(fp, 0, SEEK_END);
@@ -755,7 +755,9 @@ int main(void) {
     lept_parse(&v, jsonData);
     char* result = lept_stringify(&v, &length);
     printf("%ld\n", length);
-    printf("%s\n", result);
+    fp = fopen("stringify.json", "wb");
+    fwrite(result, length, 1, fp);
+    fclose(fp);
     lept_free(&v);
     free(result);
     free(jsonData);

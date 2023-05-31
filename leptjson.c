@@ -534,45 +534,80 @@ static void lept_stringify_string(lept_context* c, const char* s, size_t len) {
     c->top -= size - (p - head);
 }
 
-static void lept_stringify_value(lept_context* c, const lept_value* v) {
-    size_t i;
+static void lept_stringify_value(lept_context *c, const lept_value *v, int indent_level, int spaces_per_indent) {
+    size_t i, j, k;
     switch (v->type) {
-        case LEPT_NULL:   PUTS(c, "null", 4); break;
-        case LEPT_FALSE:  PUTS(c, "false", 5); break;
-        case LEPT_TRUE:   PUTS(c, "true", 4); break;
-        /* 32 is enough to hold a double in string format */
-        /* sprintf() is not safe, but we have checked the length of the buffer */
-        case LEPT_NUMBER: c->top -= 32 - sprintf(lept_context_push(c, 32), "%.17g", v->n); break;
-        case LEPT_STRING: lept_stringify_string(c, v->s.s, v->s.len); break;
+        case LEPT_NULL:
+            PUTS(c, "null", 4);break;
+        case LEPT_FALSE:
+            PUTS(c, "false", 5);break;
+        case LEPT_TRUE:
+            PUTS(c, "true", 4);break;
+        case LEPT_NUMBER:
+            /* 32 is enough to hold a double in string format */
+            /* sprintf() is not safe, but we have checked the length of the buffer */
+            c->top -= 32 - sprintf(lept_context_push(c, 32), "%.17g", v->n);
+            break;
+        case LEPT_STRING:
+            lept_stringify_string(c, v->s.s, v->s.len);break;
         case LEPT_ARRAY:
             PUTC(c, '[');
             /* stringify the elements in the array */
-            for (i = 0; i < v->a.size; i++) {
-                /* add comma before the element except the first one */
-                if (i > 0)
-                    PUTC(c, ',');
-                /* stringify the element */
-                lept_stringify_value(c, &v->a.e[i]);
+            if (v->a.size > 0) {
+                PUTC(c, '\n');
+                for (i = 0; i < v->a.size; i++) {
+                    /* add comma and newline before the element except the first one */
+                    if (i > 0) {
+                        PUTC(c, ',');
+                        PUTC(c, '\n');
+                    }
+                    /* add indentation */
+                    for (j = 0; j < indent_level * spaces_per_indent; j++)
+                        PUTC(c, ' ');
+                    /* stringify the element */
+                    lept_stringify_value(c, &v->a.e[i], indent_level + 1, spaces_per_indent);
+                }
+                PUTC(c, '\n');
+                /* add indentation */
+                for (j = 0; j < (indent_level - 1) * spaces_per_indent; j++)
+                    PUTC(c, ' ');
             }
             PUTC(c, ']');
             break;
         case LEPT_OBJECT:
             PUTC(c, '{');
             /* stringify the members in the object */
-            for (i = 0; i < v->o.size; i++) {
-                /* add comma before the member except the first one */
-                if (i > 0)
-                    PUTC(c, ',');
-                /* stringify the member::key */
-                lept_stringify_string(c, v->o.m[i].k, v->o.m[i].klen);
-                PUTC(c, ':');
-                /* stringify the member::value */
-                lept_stringify_value(c, &v->o.m[i].v);
+            if (v->o.size > 0) {
+                PUTC(c, '\n');
+                for (i = 0; i < v->o.size; i++) {
+                    /* add comma and newline before the member except the first one */
+                    if (i > 0) {
+                        PUTC(c, ',');
+                        PUTC(c, '\n');
+                    }
+                    /* add indentation */
+                    for (j = 0; j < indent_level * spaces_per_indent; j++)
+                        PUTC(c, ' ');
+                    /* stringify the member::key */
+                    lept_stringify_string(c, v->o.m[i].k, v->o.m[i].klen);
+                    /* add space before the colon */
+                    PUTC(c, ' ');
+                    PUTC(c, ':');
+                    /* add space after the colon */
+                    PUTC(c, ' ');
+                    /* stringify the member::value */
+                    lept_stringify_value(c, &v->o.m[i].v, indent_level + 1, spaces_per_indent);
+                }
+                PUTC(c, '\n');
+                /* add indentation */
+                for (j = 0; j < (indent_level - 1) * spaces_per_indent; j++)
+                    PUTC(c, ' ');
             }
             PUTC(c, '}');
             break;
-        /* ensure that invalid types are not resolved */
-        default: assert(0 && "invalid type");
+            /* ensure that invalid types are not resolved */
+        default:
+            assert(0 && "invalid type");
     }
 }
 
@@ -584,7 +619,7 @@ char* lept_stringify(const lept_value* v, size_t* length) {
     c.stack = (char*)malloc(c.size = LEPT_PARSE_STRINGIFY_INIT_SIZE);
     c.top = 0;
     /* stringify the value */
-    lept_stringify_value(&c, v);
+    lept_stringify_value(&c, v, 1, 2);
     if (length)
         *length = c.top;
     /* add '\0' to the end of the string */
